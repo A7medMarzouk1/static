@@ -14,9 +14,8 @@ pipeline {
                 echo "Multiline shell stps works too"
                 '''
                 // withAWS(credentials: 'aws-static',region:'us-east-2') {
-                  withEnv(["AWS_ACCESS_KEY_ID=${env.AWS_ACCESS_KEY_ID}",
-                 "AWS_SECRET_ACCESS_KEY=${env.AWS_SECRET_ACCESS_KEY}",
-                 "AWS_DEFAULT_REGION=${env.AWS_DEFAULT_REGION}"]) {
+                  withEnv(["AWS_ACCESS_KEY_ID=AKIAVIQLOLYQR7MLK6EZ",
+                 "AWS_SECRET_ACCESS_KEY=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") {
                        s3Upload(pathStyleAccessEnabled: true, payloadSigningEnabled: true, file:'index.html', bucket:'project3-jenkins')
 
                 }
