@@ -1,0 +1,116 @@
+<?php
+
+namespace App\Console\Commands;
+
+use App\Http\Controllers\Api\ClientController;
+use App\Models\ClientHospital;
+use App\Models\Hospital;
+use App\Models\Ticket;
+use Illuminate\Console\Command;
+use App\Models\Client;
+use Illuminate\Support\Facades\DB;
+
+class DeleteDuplicatedClients extends Command
+{
+    /**
+     * The name and signature of the console command.
+     *
+     * @var string
+     */
+    protected $signature = 'delete:duplicatedClients';
+
+    /**
+     * The console command description.
+     *
+     * @var string
+     */
+    protected $description = 'Delete Duplicated Clients';
+
+    /**
+     * Create a new command instance.
+     *
+     * @return void
+     */
+    public function __construct()
+    {
+        parent::__construct();
+    }
+
+    /**
+     * Execute the console command.
+     *
+     * @return mixed
+     */
+    public function handle()
+    {
+        $duplicated_clients = DB::table('clients')
+            ->select('national_id',DB::raw('COUNT(national_id) as count'))
+            ->groupBy('national_id')
+            ->orderBy('count')
+            ->having('count' ,'>',1)
+            ->whereNull('deleted_at')
+            ->get();
+
+        foreach ($duplicated_clients as $client){
+            $national_id = $client->national_id;
+
+            $latest_client = DB::table('clients')
+                ->select('clients.*')
+                ->where('national_id',$national_id)
+                ->whereNull('deleted_at')
+                ->latest()->first();
+            $clientId = $latest_client->id;
+
+            echo json_encode($clientId);
+            $deleted_duplicates = DB::table('clients')
+                ->select('clients.*')
+                ->where('national_id',$national_id)
+                ->where('id','!=',$clientId)
+                ->whereNull('deleted_at')
+                ->pluck('id')->toArray();
+
+            echo json_encode($deleted_duplicates);
+
+
+            $client = Client::find($clientId);
+            $client_hospital_id = (!empty($client->hospitals()->get()->toArray())) ? $client->hospitals()->first()->pivot->id : 0;
+            if($client_hospital_id  == 0){
+                $client_object = new ClientController();
+                $file_number = $client_object->generate_file_number();
+                $file_number = $file_number['file_number'];
+                $hospital_id = Hospital::first()->id;
+                $hospital_file= [
+                    'client_id'=> $clientId,
+                    'hospital_id' => $hospital_id,
+                    'file_number'=> $file_number,
+                ];
+                DB::table('client_hospitals')->insert($hospital_file);
+                $client_hospital_id = $client->hospitals()->first()->pivot->id;
+            }
+
+            Ticket::whereIn('client_id' , $deleted_duplicates)
+                ->update([
+                    'client_id'             => $clientId,
+                    'requester_id'          => $clientId,
+                    'client_hospital_id'    => $client_hospital_id
+                ]);
+
+            // delete duplicated clients
+            ClientHospital::withTrashed()->whereIN('client_id', $deleted_duplicates)->delete();
+
+            $time=time();
+
+            Client::withTrashed()->whereIN('id',$deleted_duplicates)->update([
+                'deleted_at' => DB::raw("now()"),
+                'mobile' => DB::raw("CONCAT('$time::',mobile)")
+                , 'email' => DB::raw("CONCAT('$time::',email)")
+                , 'national_id' => DB::raw("CONCAT('$time::',national_id)")
+            ]);
+
+        }
+
+        echo "Tickets Moved , Duplicated Clients Deleted";
+
+
+    }
+}
