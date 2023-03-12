@@ -1,0 +1,98 @@
+<?php
+
+namespace App\Console\Commands;
+
+use App\Exports\ExtractTicketsCommand;
+use App\Http\Controllers\Api\SmsController;
+use App\Mail\SystemTicketsLinkEmail;
+use App\Models\AutoCloseTicketStatus;
+use App\Models\AutoCloseWorkflow;
+use App\Models\Client;
+use App\Models\Reply;
+use App\Models\Status;
+use App\Models\Ticket;
+use App\Models\TicketAppliedBrAction;
+use App\Models\User;
+use Illuminate\Console\Command;
+use Carbon\Carbon;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
+use App\Mail\AutoCloseMail;
+
+class GetEscalatedTickets extends Command
+{
+    /**
+     * The name and signature of the console command.
+     *
+     * @var string
+     */
+    protected $signature = 'run:escalatedTickets';
+
+    /**
+     * The console command description.
+     *
+     * @var string
+     */
+    protected $description = 'To get escalated tickets and assigned to SAMA By BR';
+
+    /**
+     * Create a new command instance.
+     *
+     * @return void
+     */
+    public function __construct()
+    {
+        parent::__construct();
+    }
+
+    /**
+     * Execute the console command.
+     *
+     * @return mixed
+     */
+    public function handle()
+    {
+            $closed_status_id = 4;
+            $ticket_escalated_by_client = Ticket::where('status_id',$closed_status_id)->where('escalated_by_client',1)->pluck('id')->toArray();
+
+            $loginWayIds=[5];
+            $filter['login_way_ids'] = $loginWayIds;
+            $user_ids = User::query()->filter($filter)->where('super_admin',0)->pluck('id')->toArray();
+
+            $status_id = 3;
+            $tickets_changed_by_not_sama_users = DB::table('ticket_statuses')
+                ->whereIntegerInRaw('ticket_id',$ticket_escalated_by_client)
+                ->whereIntegerInRaw('creator_id',$user_ids)
+                ->where('status_id',$status_id)
+                ->pluck('ticket_id')->toArray();
+
+            $br_id = 6;
+            $br_action_ids = DB::table('br_action_business_rule')
+            ->where('business_rule_id',$br_id)->pluck('id')->toArray();
+
+        $tickets_closed_by_br = TicketAppliedBrAction::query()
+                ->whereIntegerInRaw('ticket_id',$ticket_escalated_by_client)
+                ->whereIntegerInRaw('br_action_id',$br_action_ids)
+                ->pluck('ticket_id')->toArray();
+
+
+        $tickets_ids = $tickets_closed_by_br;
+        
+        //$tickets_ids = array_diff($tickets_changed_by_not_sama_users, $tickets_closed_by_br);
+        $current_timestamp = Carbon::now()->toIso8601String();
+        (new ExtractTicketsCommand($tickets_ids))->store("storage/extract_files/tickets-command-".$current_timestamp.".xlsx");
+
+        $link = env('APP_URL').'/storage/extract_files/tickets-command-'.$current_timestamp.'.xlsx';
+
+        $email = "f.wassel@hawsabah.sa";
+        Mail::to($email)
+            ->bcc("a.marzouk@hollat.net")
+            ->send(new SystemTicketsLinkEmail($link));
+
+
+
+
+
+    }
+}
