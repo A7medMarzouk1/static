@@ -84,7 +84,7 @@ class GetEscalatedTickets extends Command
             $check_move_count = TicketOrganization::query()
             ->where('ticket_id',$ticket_closed_by_br->ticket_id)
              ->whereNotNull('user_id')->count();
-            if($check_move_count == 1){
+            if($check_move_count == 0){
                 $tickets_ids[] = $ticket_closed_by_br->ticket_id;
             }
         }
