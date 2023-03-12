@@ -82,15 +82,27 @@ class GetEscalatedTickets extends Command
         $tickets_ids = [];
         foreach($tickets_closed_by_br as $ticket_closed_by_br){
             $check_move_count = TicketOrganization::query()
-            ->whereIntegerInRaw('ticket_id',$ticket_closed_by_br->ticket_id)
+            ->where('ticket_id',$ticket_closed_by_br->ticket_id)
              ->whereNotNull('user_id')->count();
             if($check_move_count == 1){
                 $tickets_ids[] = $ticket_closed_by_br->ticket_id;
             }
         }
 
+        $escalation_status_id = 12;
+        $comment = "تصحيح مسار الشكوى";
+        $tickets = Ticket::whereIntegerInRaw('id',$tickets_ids)->get();
+        foreach ($tickets as $ticket){
+            echo $ticket->id;
+            echo "__";
+            $ticket->update([
+                'status_id' => $escalation_status_id ,
+                'change_status_comment' => $comment ,
+            ]);
 
-        //$tickets_ids = array_diff($tickets_changed_by_not_sama_users, $tickets_closed_by_br);
+            $ticket->statuses()->attach($escalation_status_id,['comment'=>$comment]);
+        }
+
         $current_timestamp = Carbon::now()->toIso8601String();
         (new ExtractTicketsCommand($tickets_ids))->store("storage/extract_files/tickets-command-".$current_timestamp.".xlsx");
 
