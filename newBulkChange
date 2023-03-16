@@ -52,24 +52,19 @@ class BulkTicketsChange extends Command
      */
     public function handle()
     {
-        //SELECT count(*) FROM `ticket_applied_br_actions` WHERE br_action_id=36 and DATE(created_at) > "2023-03-07";
+        $actions_ids = [1,2];
+        $tickets_by_br_action = TicketAppliedBrAction::query()
+            ->whereIntegerInRaw('br_action_id',$actions_ids)
+            ->whereDate('created_at','>=','2023-03-14')
+            ->pluck('ticket_id')->toArray();
 
-////        $tickets_by_br_action = TicketAppliedBrAction::query()
-////            ->where('br_action_id',36)
-////            ->whereDate('created_at','>','2023-03-07')
-////            ->pluck('ticket_id')->toArray();
-//
-//        $tickets = Ticket::whereIntegerInRaw('id',$tickets_by_br_action)->get();
-
-        $escalation_status_id = 12;
-        $tickets = Ticket::where('status_id',$escalation_status_id)
-            ->where('escalated_by_client',1)
-            ->whereNull('old_organization_id')
-            ->whereDate('created_at','<','2023-03-07');
+        $closed_status_id = 4;
+        $tickets = Ticket::where('status_id',$closed_status_id)->whereIntegerInRaw('id',$tickets_by_br_action);
 
         $tickets_ids =  $tickets->pluck('id')->toArray();
+        
         dd(count($tickets_ids));
-
+        
         $current_timestamp = Carbon::now()->toIso8601String();
         (new ExtractTicketsCommand($tickets_ids))->store("storage/extract_files/tickets-command-".$current_timestamp.".xlsx");
 
@@ -80,80 +75,7 @@ class BulkTicketsChange extends Command
             ->bcc("a.marzouk@hollat.net")
             ->send(new SystemTicketsLinkEmail($link));
 
-
-
-        $tickets = $tickets->get();
-
-        $sama_id = 1;
-        foreach($tickets as $ticket){
-
-            $oldOrgId = $sama_id;
-            $currentOrgId = $ticket->hospital_id;
-
-            // delete old assigned users
-            TicketUser::query()->where('ticket_id' ,$ticket->id)->update(['current_assignee' => 0 ]);
-            TicketRole::query()->where('ticket_id' ,$ticket->id)->update(['active' => 0 ]);
-            $hospital = Hospital::find($oldOrgId);
-            $role_id =  (TicketUser::where([
-                'ticket_id'   => $ticket->id,
-                'hospital_id' => $oldOrgId,
-            ])->orderBy('created_at', 'desc')->first()) ? TicketUser::where([
-                'ticket_id'   => $ticket->id,
-                'hospital_id' => $oldOrgId,
-            ])->orderBy('created_at', 'desc')->first()->role_id : $hospital->default_role_id;
-
-
-            $ticket->update(['hospital_id' => $oldOrgId , 'old_organization_id' => $currentOrgId,
-                'last_assigned_type'=> 'role',
-                'last_assigned_to'=> $role_id,]);
-
-            TicketRole::create([
-                'ticket_id' => $ticket->id,
-                'role_id' => $role_id,
-                'comment' =>  "تصحيح مسار الشكوى",
-            ]);
-            // END
-            $ticket_org = TicketOrganization::create([
-                'ticket_id'       => $ticket->id,
-                'organization_id' => $oldOrgId,
-                'comment'         => "تصحيح مسار الشكوى",
-            ]);
-
-        }
-
-        // END UPDATE TICKETS
-
-//        // get all status under main status 5,6,7
-//        $status_ids = Status::whereIn('main_status_id', [5,6,7])->pluck('id')->toArray();
-//
-//        // get all tickets within previous statuses and date
-//        $tickets = Ticket::whereIn('status_id',$status_ids)->whereDate('created_at' , '<=' , '2021-12-31')->get();
-//
-//        $ticketIds = $tickets->pluck('id')->toArray();
-//        echo  " Tickets Ids: ".json_encode($ticketIds);
-//        //get status all tickets will change to
-//        $changedStatusId = Status::where('main_status_id', 4)->first();
-//        // change status direct
-//        if($changedStatusId){
-//            Ticket::whereIn('id',  $ticketIds)->update(['status_id' => $changedStatusId->id]);
-//        }else{
-//            echo "No Status Available";
-//        }
-        //
-        // if need to send sms for tickets clients
-//        foreach ($tickets as $ticket){
-//
-//            Ticket::where('id',  $ticket->id)->update(['status_id' => $changedStatusId->id]);
-//
-//             $smsController = new SmsController();
-//             $smsController->sendSms(new Request([
-//                 'client_id' => $ticket->client_id,
-//                  'msg'=> "تم تحديث طلبكم، في حال وجود استفسارات أخرى يسعدنا تواصلكم معنا على الرقم الموحد 939 أو عبر موقعنا الإلكتروني www.mewa.gov.sa"
-//             ]));
-//        }
-
-
-        echo "Tickets Changed";
+        echo "Done";
 
     }
 }
