@@ -1,0 +1,117 @@
+<?php
+
+
+namespace App\Console\Commands;
+
+
+use App\Exports\ExtractTicketsCommand;
+use App\Http\Controllers\Api\SmsController;
+use App\Mail\SystemTicketsLinkEmail;
+use App\Models\Hospital;
+use App\Models\Status;
+use App\Models\Ticket;
+use App\Models\TicketAppliedBrAction;
+use App\Models\TicketOrganization;
+use App\Models\TicketRole;
+use App\Models\TicketUser;
+use Carbon\Carbon;
+use Illuminate\Http\Request;
+use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Mail;
+
+class BulkTicketsChange extends Command
+{
+    /**
+     * The name and signature of the console command.
+     *
+     * @var string
+     */
+    protected $signature = 'run:ticketStatusBulkChange';
+
+    /**
+     * The console command description.
+     *
+     * @var string
+     */
+    protected $description = 'command to bulk change ticket status';
+
+    /**
+     * Create a new command instance.
+     *
+     * @return void
+     */
+    public function __construct()
+    {
+        parent::__construct();
+    }
+
+    /**
+     * Execute the console command.
+     *
+     * @return mixed
+     */
+    public function handle()
+    {
+        $actions_ids = [135,136];
+
+        $tickets_by_br_action = TicketAppliedBrAction::query()
+            ->whereIntegerInRaw('br_action_id',$actions_ids)
+            ->whereDate('created_at','>=','2023-03-14')
+            ->whereDate('created_at','<=','2023-03-15')
+            ->pluck('ticket_id')->toArray();
+
+        echo "-Start Count-";
+        echo count($tickets_by_br_action);
+
+        $closed_status_id = 4;
+        $tickets = Ticket::where('status_id',$closed_status_id)->whereIntegerInRaw('id',$tickets_by_br_action);
+
+        $tickets_ids =  $tickets->pluck('id')->toArray();
+        echo "-Tickets Count-";
+        echo count($tickets_ids);
+
+        $tickets = $tickets->get();
+
+        $status_id = 3;
+        $comment = "تصحيح مسار الشكوى";
+        foreach ($tickets as $ticket){
+            //echo $ticket->id;
+            //echo "__";
+            $ticket->update([
+                'status_id' => $status_id ,
+                'change_status_comment' => $comment ,
+            ]);
+
+            $ticket->statuses()->attach($status_id,['comment'=>$comment]);
+
+            TicketAppliedBrAction::query()
+                ->whereIntegerInRaw('br_action_id',$actions_ids)
+                ->whereDate('created_at','>=','2023-03-14')
+                ->whereDate('created_at','<=','2023-03-15')
+                ->where('ticket_id',$ticket->id)
+                ->delete();
+
+        }
+
+        $tickets_by_br_action = TicketAppliedBrAction::query()
+            ->whereIntegerInRaw('br_action_id',$actions_ids)
+            ->whereDate('created_at','>=','2023-03-14')
+            ->whereDate('created_at','<=','2023-03-15')
+            ->pluck('ticket_id')->toArray();
+        echo "-End Count-";
+        dd(count($tickets_by_br_action));
+
+        $current_timestamp = Carbon::now()->toIso8601String();
+        (new ExtractTicketsCommand($tickets_ids))->store("storage/extract_files/tickets-command-".$current_timestamp.".xlsx");
+
+        $link = env('APP_URL').'/storage/extract_files/tickets-command-'.$current_timestamp.'.xlsx';
+
+        $email = "f.wassel@hawsabah.sa";
+        Mail::to($email)
+            ->bcc("a.marzouk@hollat.net")
+            ->send(new SystemTicketsLinkEmail($link));
+
+        echo "Done";
+
+    }
+}
