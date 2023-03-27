@@ -54,54 +54,17 @@ class GetEscalatedTickets extends Command
      */
     public function handle()
     {
-            $closed_status_id = 4;
-            $ticket_escalated_by_client = Ticket::where('status_id',$closed_status_id)->where('escalated_by_client',1)->pluck('id')->toArray();
 
-            $loginWayIds=[5];
-            $filter['login_way_ids'] = $loginWayIds;
-            $user_ids = User::query()->filter($filter)->where('super_admin',0)->pluck('id')->toArray();
-
-            $status_id = 3;
-            $tickets_changed_by_not_sama_users = DB::table('ticket_statuses')
-                ->whereIntegerInRaw('ticket_id',$ticket_escalated_by_client)
-                ->whereIntegerInRaw('creator_id',$user_ids)
+            $status_id = 12;
+            
+            $tickets_changed_at_weekend = DB::table('ticket_statuses')
+                ->whereDate('created_at','>=','2023-03-24')
+                ->whereDate('created_at','<=','2023-03-25')
                 ->where('status_id',$status_id)
                 ->pluck('ticket_id')->toArray();
-
-            $br_id = 6;
-            $br_action_ids = DB::table('br_action_business_rule')
-            ->where('business_rule_id',$br_id)->pluck('id')->toArray();
-
-        $tickets_closed_by_br = TicketAppliedBrAction::query()
-                ->whereIntegerInRaw('ticket_id',$tickets_changed_by_not_sama_users)
-                ->whereIntegerInRaw('br_action_id',$br_action_ids)
-                ->get();
-
-
-        // no action added by users
-        $tickets_ids = [];
-        foreach($tickets_closed_by_br as $ticket_closed_by_br){
-            $check_move_count = TicketOrganization::query()
-            ->where('ticket_id',$ticket_closed_by_br->ticket_id)
-             ->whereNotNull('user_id')->count();
-            if($check_move_count == 0){
-                $tickets_ids[] = $ticket_closed_by_br->ticket_id;
-            }
-        }
-
-        $escalation_status_id = 12;
-        $comment = "تصحيح مسار الشكوى";
-        $tickets = Ticket::whereIntegerInRaw('id',$tickets_ids)->get();
-        foreach ($tickets as $ticket){
-            echo $ticket->id;
-            echo "__";
-            $ticket->update([
-                'status_id' => $escalation_status_id ,
-                'change_status_comment' => $comment ,
-            ]);
-
-            $ticket->statuses()->attach($escalation_status_id,['comment'=>$comment]);
-        }
+            
+            $tickets_ids = $tickets_changed_at_weekend;
+        
 
         $current_timestamp = Carbon::now()->toIso8601String();
         (new ExtractTicketsCommand($tickets_ids))->store("storage/extract_files/tickets-command-".$current_timestamp.".xlsx");
