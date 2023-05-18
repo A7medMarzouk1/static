@@ -58,7 +58,7 @@ class GetEscalatedTickets extends Command
            $status_id = 12;
 
             $tickets_escalated = Ticket::query()
-                ->whereRaw('hospital_id  = old_organization_id')
+                ->where('old_organization_id', 1)
                 ->where('status_id',$status_id)
                 ->pluck('id')->toArray();
             
