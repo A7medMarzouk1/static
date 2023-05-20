@@ -1,0 +1,2 @@
+INSERT INTO `continuous_event_action_keys` (`id`, `column_name`, `title_en`, `title_ar`, `setvaluable_type`, `deleted_at`, `created_at`, `updated_at`) VALUES
+(7, 'hospital_id', 'Organization', 'الجهة', 'App\\Models\\Hospital', NULL, '2021-01-31 04:27:58', '2021-01-31 04:27:58');
